@@ -1,5 +1,5 @@
 // ================== CONFIG ==================
-const API = "https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec";
+const API = "https://script.google.com/macros/s/AKfycbwLsl-rkY_bkde91Ix5iVJw46o8o5Z79blidbdIh4g9ANYcrJZQlKRmHK1WxiLAWYbYkw/exec";
 let chart;
 let memberChart;
 
@@ -26,13 +26,9 @@ async function fetchSheet(sheet) {
       body: JSON.stringify({ sheet, action: "list" })
     });
     const data = await res.json();
-    if (!data.success) {
-      console.warn(`Sheet ${sheet} fetch failed:`, data.message);
-      return [];
-    }
-    return data.items || [];
+    return Array.isArray(data.items) ? data.items : [];
   } catch (err) {
-    console.error(`Failed to fetch sheet ${sheet}:`, err);
+    console.error(`Failed to fetch sheet: ${sheet}`, err);
     return [];
   }
 }
@@ -46,15 +42,15 @@ async function addSheetItem(sheet, obj) {
     const data = await res.json();
     return data;
   } catch (err) {
-    console.error(`Failed to add item to ${sheet}:`, err);
-    return { success: false, message: err.message };
+    console.error(`Failed to add item to sheet: ${sheet}`, err);
+    return { success: false, message: "Network or API error" };
   }
 }
 
 // ================== MEMBERS ==================
 async function populateMembers() {
   const users = await fetchSheet("Users");
-  const members = users.filter(u => u?.role === "member");
+  const members = users.filter(u => u.role === "member");
 
   const select = document.getElementById('memberSelect');
   const loanSelect = document.getElementById('loanEmail');
@@ -64,7 +60,6 @@ async function populateMembers() {
   loanSelect.innerHTML = '<option value="">Select Member</option>';
 
   members.forEach(m => {
-    if (!m?.email) return;
     const opt1 = document.createElement('option');
     opt1.value = m.email;
     opt1.innerText = m.email;
@@ -101,23 +96,20 @@ async function calculatePenalties() {
   const contributions = await fetchSheet("Contributions");
   const penalties = await fetchSheet("Penalties");
 
-  const members = users.filter(u => u?.role === 'member');
+  const members = users.filter(u => u.role === 'member');
   const now = new Date();
   const month = now.getMonth() + 1;
   const year = now.getFullYear();
 
   for (const m of members) {
-    const paid = contributions?.some?.(c => {
-      const d = new Date(c.date);
-      return c.email === m.email && d.getMonth() + 1 === month && d.getFullYear() === year;
-    }) || false;
-
-    const alreadyPenalized = penalties?.some?.(p => p.email === m.email && p.month == month && p.year == year) || false;
+    const paid = contributions.some(c => c?.email && new Date(c.date)?.getMonth() + 1 === month && new Date(c.date)?.getFullYear() === year && c.email === m.email);
+    const alreadyPenalized = penalties.some(p => p?.email && p.email === m.email && p.month == month && p.year == year);
 
     if (!paid && !alreadyPenalized) {
       await addSheetItem("Penalties", { email: m.email, amount: 100, month, year, reason: "Missed contribution" });
     }
   }
+
   alert("Penalties applied");
   updateSummary();
 }
@@ -125,7 +117,7 @@ async function calculatePenalties() {
 // ================== SUMMARY ==================
 async function updateSummary() {
   const users = await fetchSheet("Users");
-  const members = users.filter(u => u?.role === 'member');
+  const members = users.filter(u => u.role === 'member');
   const contributions = await fetchSheet("Contributions");
   const penalties = await fetchSheet("Penalties");
 
@@ -133,12 +125,13 @@ async function updateSummary() {
   const month = now.getMonth() + 1;
   const year = now.getFullYear();
 
-  const totalC = contributions?.filter?.(c => {
-    const d = new Date(c.date);
-    return d.getMonth() + 1 === month && d.getFullYear() === year;
-  })?.reduce((a, b) => a + Number(b.amount), 0) || 0;
+  const totalC = contributions
+    .filter(c => c?.date && new Date(c.date)?.getMonth() + 1 === month && new Date(c.date)?.getFullYear() === year)
+    .reduce((a, b) => a + Number(b.amount || 0), 0);
 
-  const totalP = penalties?.filter?.(p => p.month === month && p.year === year)?.reduce((a, b) => a + Number(b.amount), 0) || 0;
+  const totalP = penalties
+    .filter(p => p?.month === month && p?.year === year)
+    .reduce((a, b) => a + Number(b.amount || 0), 0);
 
   const contribEl = document.getElementById('cardTotalContributions');
   const penaltyEl = document.getElementById('cardTotalPenalties');
@@ -150,14 +143,10 @@ async function updateSummary() {
   const missedList = document.getElementById('missedList');
   if (!missedList) return;
   missedList.innerHTML = '';
-
   let missed = 0;
-  for (const m of members) {
-    const paid = contributions?.some?.(c => {
-      const d = new Date(c.date);
-      return c.email === m.email && d.getMonth() + 1 === month && d.getFullYear() === year;
-    }) || false;
 
+  for (const m of members) {
+    const paid = contributions.some(c => c?.email && new Date(c.date)?.getMonth() + 1 === month && new Date(c.date)?.getFullYear() === year && c.email === m.email);
     if (!paid) {
       missed++;
       const li = document.createElement('li');
@@ -179,8 +168,50 @@ async function updateSummary() {
   if (missedEl) missedEl.innerText = missed;
 }
 
+// ================== MEMBER TREND CHART ==================
+async function drawMemberTrend() {
+  const emailEl = document.getElementById('memberSelect');
+  if (!emailEl) return;
+  const email = emailEl.value;
+  if (!email) return;
+
+  const contributions = await fetchSheet("Contributions");
+  const dataArr = Array(12).fill(0);
+  const year = new Date().getFullYear();
+
+  contributions.forEach(c => {
+    if (!c) return;
+    const d = new Date(c.date);
+    if (c.email === email && d.getFullYear() === year) dataArr[d.getMonth()] += Number(c.amount || 0);
+  });
+
+  const ctx = document.getElementById('memberChart')?.getContext('2d');
+  if (!ctx) return;
+  if (memberChart) memberChart.destroy();
+
+  memberChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
+      datasets: [{
+        label: `${email} Contribution`,
+        data: dataArr,
+        borderColor: 'rgba(255,193,7,1)',
+        backgroundColor: 'rgba(255,193,7,0.2)',
+        fill: true,
+        tension: 0.3
+      }]
+    },
+    options: {
+      plugins: { title: { display: true, text: `Contribution Trend for ${email}` } },
+      animation: { duration: 1200, easing: 'easeOutQuart' }
+    }
+  });
+}
+
 // ================== INIT ==================
 window.onload = function () {
   populateMembers();
   updateSummary();
+  drawMemberTrend();
 };
