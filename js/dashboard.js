@@ -1,5 +1,5 @@
 // ================== CONFIG ==================
-const API = "https://script.google.com/macros/s/AKfycbzT4WoXTksqitPCep2ohxQMVu78G4qgYG56ArgU8d980DoQvTPrGFcs14Kdwea6chnf9A/exec";
+const API = "https://script.google.com/macros/s/AKfycbwLsl-rkY_bkde91Ix5iVJw46o8o5Z79blidbdIh4g9ANYcrJZQlKRmHK1WxiLAWYbYkw/exec";
 let chart;
 let memberChart;
 
@@ -42,16 +42,21 @@ async function populateMembers(){
   const users = await fetchSheet("Users");
   const members = users.filter(u => u.role === "member");
   const select = document.getElementById('memberSelect');
-  if(!select) return;
-  select.innerHTML = '<option value="">Select Member</option>';
+  const loanSelect = document.getElementById('loanMemberEmail');
+  if(!select && !loanSelect) return;
+  if(select) select.innerHTML = '<option value="">Select Member</option>';
+  if(loanSelect) loanSelect.innerHTML = '<option value="">Select Member</option>';
+
   members.forEach(m=>{
-    const opt = document.createElement('option');
-    opt.value = m.email;
-    opt.innerText = m.email;
-    select.appendChild(opt);
+    const opt1 = document.createElement('option');
+    opt1.value = m.email; opt1.innerText = m.email;
+    if(select) select.appendChild(opt1);
+
+    const opt2 = document.createElement('option');
+    opt2.value = m.email; opt2.innerText = m.email;
+    if(loanSelect) loanSelect.appendChild(opt2);
   });
 }
-populateMembers();
 
 // ================== CONTRIBUTIONS ==================
 async function addContribution(){
@@ -205,6 +210,61 @@ function drawChart(labels,data,title){
   });
 }
 
+// ================== LOANS ==================
+async function addLoan() {
+  const email = document.getElementById('loanMemberEmail')?.value;
+  const amount = Number(document.getElementById('loanAmount')?.value);
+  const reason = document.getElementById('loanReason')?.value || "";
+
+  if(!email || !amount || amount <= 0){
+    alert('Fill all fields correctly');
+    return;
+  }
+
+  const res = await addSheetItem("Loans", {
+    email,
+    amount,
+    date: new Date().toISOString(),
+    status: "pending",
+    reason
+  });
+
+  if(res.success){
+    alert("Loan requested successfully!");
+    populateLoans();
+  } else alert(res.message || "Failed to request loan");
+}
+
+async function populateLoans(){
+  const loans = await fetchSheet("Loans");
+  const loanListEl = document.getElementById('loanList');
+  if(!loanListEl) return;
+
+  loanListEl.innerHTML = '';
+  loans.forEach(l => {
+    const li = document.createElement('li');
+    li.innerHTML = `
+      ${l.email} | KES ${l.amount} | Status: <b>${l.status}</b> | ${l.reason || ""}
+      ${currentUser.role === 'admin' && l.status === 'pending' ? `<button onclick="approveLoan('${l.email}','${l.date}')">Approve</button>` : ""}
+      ${currentUser.role === 'admin' && l.status === 'approved' ? `<button onclick="markRepaid('${l.email}','${l.date}')">Mark Repaid</button>` : ""}
+    `;
+    loanListEl.appendChild(li);
+  });
+}
+
+async function updateLoanStatus(email, date, status){
+  const loans = await fetchSheet("Loans");
+  const loan = loans.find(l => l.email===email && l.date===date);
+  if(!loan) return alert("Loan not found");
+
+  await addSheetItem("Loans", { ...loan, status });
+  alert(`Loan status updated to ${status}`);
+  populateLoans();
+}
+
+function approveLoan(email, date){ updateLoanStatus(email, date, "approved"); }
+function markRepaid(email, date){ updateLoanStatus(email, date, "repaid"); }
+
 // ================== REPORTS ==================
 async function monthlyReport(){
   const monthYear = document.getElementById('monthPicker')?.value.split('-');
@@ -263,6 +323,7 @@ function logout(){
 // ================== INIT ==================
 window.onload = function(){
   populateMembers();
+  populateLoans();
   updateSummary();
   drawMemberTrend();
 };
