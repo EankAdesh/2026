@@ -41,28 +41,27 @@ async function addSheetItem(sheet, obj){
 async function populateMembers(){
   const users = await fetchSheet("Users");
   const members = users.filter(u => u.role === "member");
-  const select = document.getElementById('memberSelect');
-  if(select){
-    select.innerHTML = '<option value="">Select Member</option>';
-    members.forEach(m=>{
-      const opt = document.createElement('option');
-      opt.value = m.email;
-      opt.innerText = m.email;
-      select.appendChild(opt);
-    });
-  }
 
+  const select = document.getElementById('memberSelect');
   const loanSelect = document.getElementById('loanEmail');
-  if(loanSelect){
-    loanSelect.innerHTML = '<option value="">Select Member</option>';
-    members.forEach(m=>{
-      const opt = document.createElement('option');
-      opt.value = m.email;
-      opt.innerText = m.email;
-      loanSelect.appendChild(opt);
-    });
-  }
+  if(!select || !loanSelect) return;
+
+  select.innerHTML = '<option value="">Select Member</option>';
+  loanSelect.innerHTML = '<option value="">Select Member</option>';
+
+  members.forEach(m=>{
+    const opt1 = document.createElement('option');
+    opt1.value = m.email;
+    opt1.innerText = m.email;
+    select.appendChild(opt1);
+
+    const opt2 = document.createElement('option');
+    opt2.value = m.email;
+    opt2.innerText = m.email;
+    loanSelect.appendChild(opt2);
+  });
 }
+populateMembers();
 
 // ================== CONTRIBUTIONS ==================
 async function addContribution(){
@@ -339,6 +338,39 @@ async function updateLoan(id, status) {
   }
 }
 
+// ================== BACKUP & RESTORE ==================
+async function backupData() {
+  const users = await fetchSheet("Users");
+  const contributions = await fetchSheet("Contributions");
+  const penalties = await fetchSheet("Penalties");
+  const loans = await fetchSheet("Loans");
+
+  const backup = {users, contributions, penalties, loans};
+  const blob = new Blob([JSON.stringify(backup, null, 2)], {type: "application/json"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `chama_backup_${Date.now()}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+async function restoreData(file) {
+  const text = await file.text();
+  const data = JSON.parse(text);
+
+  for(const [sheetName, items] of Object.entries(data)) {
+    for(const item of items){
+      await addSheetItem(sheetName, item);
+    }
+  }
+  alert("Data restored successfully!");
+  updateSummary();
+  populateMembers();
+  drawMemberTrend();
+  populateLoans();
+}
+
 // ================== LOGOUT ==================
 function logout(){
   localStorage.removeItem('currentUser');
@@ -352,60 +384,3 @@ window.onload = function(){
   drawMemberTrend();
   populateLoans();
 };
-// ================== BACKUP & RESTORE ==================
-async function backupData() {
-  const users = await fetchSheet("Users");
-  const contributions = await fetchSheet("Contributions");
-  const penalties = await fetchSheet("Penalties");
-  const loans = await fetchSheet("Loans");
-
-  const backup = { users, contributions, penalties, loans };
-  const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(backup, null, 2));
-  const downloadAnchorNode = document.createElement('a');
-  downloadAnchorNode.setAttribute("href", dataStr);
-  downloadAnchorNode.setAttribute("download", `chama_backup_${Date.now()}.json`);
-  document.body.appendChild(downloadAnchorNode);
-  downloadAnchorNode.click();
-  downloadAnchorNode.remove();
-  alert("Backup downloaded!");
-}
-
-async function restoreData(file) {
-  if(!file) return alert("No file selected");
-  const reader = new FileReader();
-  reader.onload = async function(e){
-    try {
-      const data = JSON.parse(e.target.result);
-
-      // Optional: clear current sheets first
-      // await clearSheet("Users");
-      // await clearSheet("Contributions");
-      // await clearSheet("Penalties");
-      // await clearSheet("Loans");
-
-      for(const user of data.users || []) await addSheetItem("Users", user);
-      for(const c of data.contributions || []) await addSheetItem("Contributions", c);
-      for(const p of data.penalties || []) await addSheetItem("Penalties", p);
-      for(const l of data.loans || []) await addSheetItem("Loans", l);
-
-      alert("Data restored successfully!");
-      // Refresh UI
-      populateMembers();
-      updateSummary();
-      drawMemberTrend();
-      populateLoans();
-    } catch(err) {
-      alert("Failed to restore: " + err.message);
-    }
-  };
-  reader.readAsText(file);
-}
-
-// Optional: function to clear a sheet before restoring (if needed)
-async function clearSheet(sheetName){
-  const items = await fetchSheet(sheetName);
-  for(const item of items){
-    // Here you can implement deletion if your GAS script supports it
-    // Currently, this just skips, since GAS code does not support delete
-  }
-}
