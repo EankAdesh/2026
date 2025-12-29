@@ -59,6 +59,28 @@
 
   <hr>
 
+  <h3>Loan Management</h3>
+  <div id="loanSection">
+    <!-- Request Loan (Member Only) -->
+    <div id="requestLoan" class="section">
+      <h4>Request a Loan</h4>
+      <select id="loanMemberEmail">
+        <option value="">Select Member</option>
+      </select>
+      <input id="loanAmount" type="number" placeholder="Amount">
+      <input id="loanReason" placeholder="Reason (optional)">
+      <button onclick="addLoan()">Request Loan</button>
+    </div>
+
+    <!-- Loan List (Admin Only) -->
+    <div id="loanListSection" class="section">
+      <h4>Loans</h4>
+      <ul id="loanList"></ul>
+    </div>
+  </div>
+
+  <hr>
+
   <h3>Reports</h3>
   <input type="month" id="monthPicker">
   <button onclick="monthlyReport()">Monthly Report</button>
