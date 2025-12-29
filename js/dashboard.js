@@ -1,55 +1,70 @@
 // ================== CONFIG ==================
-const API = "https://script.google.com/macros/s/AKfycbwLsl-rkY_bkde91Ix5iVJw46o8o5Z79blidbdIh4g9ANYcrJZQlKRmHK1WxiLAWYbYkw/exec";
+const API = "https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec";
 let chart;
 let memberChart;
 
 // ================== LOGIN CHECK ==================
 const currentUser = JSON.parse(localStorage.getItem('currentUser'));
-if(!currentUser){
+if (!currentUser) {
   alert('Please login first');
   window.location.href = 'index.html';
 } else {
   const userRoleEl = document.getElementById('userRole');
-  if(userRoleEl) userRoleEl.innerText = `Welcome, ${currentUser.email} (${currentUser.role})`;
+  if (userRoleEl) userRoleEl.innerText = `Welcome, ${currentUser.email} (${currentUser.role})`;
 
-  if(currentUser.role !== 'admin'){
+  if (currentUser.role !== 'admin') {
     const adminSection = document.getElementById('adminSection');
-    if(adminSection) adminSection.style.display = 'none';
+    if (adminSection) adminSection.style.display = 'none';
   }
 }
 
 // ================== HELPER FUNCTIONS ==================
-async function fetchSheet(sheet){
-  const res = await fetch(API, {
-    method: "POST",
-    body: JSON.stringify({ sheet, action: "list" })
-  });
-  const data = await res.json();
-  return data.items || [];
+async function fetchSheet(sheet) {
+  try {
+    const res = await fetch(API, {
+      method: "POST",
+      body: JSON.stringify({ sheet, action: "list" })
+    });
+    const data = await res.json();
+    if (!data.success) {
+      console.warn(`Sheet ${sheet} fetch failed:`, data.message);
+      return [];
+    }
+    return data.items || [];
+  } catch (err) {
+    console.error(`Failed to fetch sheet ${sheet}:`, err);
+    return [];
+  }
 }
 
-async function addSheetItem(sheet, obj){
-  const res = await fetch(API, {
-    method: "POST",
-    body: JSON.stringify({ sheet, action: "add", ...obj })
-  });
-  const data = await res.json();
-  return data;
+async function addSheetItem(sheet, obj) {
+  try {
+    const res = await fetch(API, {
+      method: "POST",
+      body: JSON.stringify({ sheet, action: "add", ...obj })
+    });
+    const data = await res.json();
+    return data;
+  } catch (err) {
+    console.error(`Failed to add item to ${sheet}:`, err);
+    return { success: false, message: err.message };
+  }
 }
 
 // ================== MEMBERS ==================
-async function populateMembers(){
+async function populateMembers() {
   const users = await fetchSheet("Users");
-  const members = users.filter(u => u.role === "member");
+  const members = users.filter(u => u?.role === "member");
 
   const select = document.getElementById('memberSelect');
   const loanSelect = document.getElementById('loanEmail');
-  if(!select || !loanSelect) return;
+  if (!select || !loanSelect) return;
 
   select.innerHTML = '<option value="">Select Member</option>';
   loanSelect.innerHTML = '<option value="">Select Member</option>';
 
-  members.forEach(m=>{
+  members.forEach(m => {
+    if (!m?.email) return;
     const opt1 = document.createElement('option');
     opt1.value = m.email;
     opt1.innerText = m.email;
@@ -61,19 +76,18 @@ async function populateMembers(){
     loanSelect.appendChild(opt2);
   });
 }
-populateMembers();
 
 // ================== CONTRIBUTIONS ==================
-async function addContribution(){
+async function addContribution() {
   const email = document.getElementById('memberEmail')?.value;
   const amount = Number(document.getElementById('amount')?.value);
-  if(!email || !amount || amount <= 0){ 
-    alert('Fill fields correctly'); 
-    return; 
+  if (!email || !amount || amount <= 0) {
+    alert('Fill fields correctly');
+    return;
   }
 
-  const res = await addSheetItem("Contributions",{ email, amount, date: new Date().toISOString() });
-  if(res.success){
+  const res = await addSheetItem("Contributions", { email, amount, date: new Date().toISOString() });
+  if (res.success) {
     alert("Contribution added!");
     updateSummary();
     populateMembers();
@@ -82,25 +96,26 @@ async function addContribution(){
 }
 
 // ================== PENALTIES ==================
-async function calculatePenalties(){
+async function calculatePenalties() {
   const users = await fetchSheet("Users");
   const contributions = await fetchSheet("Contributions");
   const penalties = await fetchSheet("Penalties");
 
-  const members = users.filter(u => u.role === 'member');
+  const members = users.filter(u => u?.role === 'member');
   const now = new Date();
-  const month = now.getMonth()+1;
+  const month = now.getMonth() + 1;
   const year = now.getFullYear();
 
-  for(const m of members){
-    const paid = contributions.some(c=>{
+  for (const m of members) {
+    const paid = contributions?.some?.(c => {
       const d = new Date(c.date);
-      return c.email===m.email && d.getMonth()+1===month && d.getFullYear()===year;
-    });
+      return c.email === m.email && d.getMonth() + 1 === month && d.getFullYear() === year;
+    }) || false;
 
-    const alreadyPenalized = penalties.some(p=>p.email===m.email && p.month==month && p.year==year);
-    if(!paid && !alreadyPenalized){
-      await addSheetItem("Penalties",{ email: m.email, amount: 100, month, year, reason: "Missed contribution" });
+    const alreadyPenalized = penalties?.some?.(p => p.email === m.email && p.month == month && p.year == year) || false;
+
+    if (!paid && !alreadyPenalized) {
+      await addSheetItem("Penalties", { email: m.email, amount: 100, month, year, reason: "Missed contribution" });
     }
   }
   alert("Penalties applied");
@@ -108,41 +123,42 @@ async function calculatePenalties(){
 }
 
 // ================== SUMMARY ==================
-async function updateSummary(){
+async function updateSummary() {
   const users = await fetchSheet("Users");
-  const members = users.filter(u=>u.role==='member');
+  const members = users.filter(u => u?.role === 'member');
   const contributions = await fetchSheet("Contributions");
   const penalties = await fetchSheet("Penalties");
 
   const now = new Date();
-  const month = now.getMonth()+1;
+  const month = now.getMonth() + 1;
   const year = now.getFullYear();
 
-  const totalC = contributions.filter(c=>{
+  const totalC = contributions?.filter?.(c => {
     const d = new Date(c.date);
-    return d.getMonth()+1===month && d.getFullYear()===year;
-  }).reduce((a,b)=>a+Number(b.amount),0);
+    return d.getMonth() + 1 === month && d.getFullYear() === year;
+  })?.reduce((a, b) => a + Number(b.amount), 0) || 0;
 
-  const totalP = penalties.filter(p=>p.month===month && p.year===year)
-    .reduce((a,b)=>a+Number(b.amount),0);
+  const totalP = penalties?.filter?.(p => p.month === month && p.year === year)?.reduce((a, b) => a + Number(b.amount), 0) || 0;
 
   const contribEl = document.getElementById('cardTotalContributions');
   const penaltyEl = document.getElementById('cardTotalPenalties');
   const missedEl = document.getElementById('cardMissedMembers');
-  if(contribEl) contribEl.innerText = `KES ${totalC}`;
-  if(penaltyEl) penaltyEl.innerText = `KES ${totalP}`;
+
+  if (contribEl) contribEl.innerText = `KES ${totalC}`;
+  if (penaltyEl) penaltyEl.innerText = `KES ${totalP}`;
 
   const missedList = document.getElementById('missedList');
-  if(!missedList) return;
+  if (!missedList) return;
   missedList.innerHTML = '';
-  let missed = 0;
 
-  for(const m of members){
-    const paid = contributions.some(c=>{
+  let missed = 0;
+  for (const m of members) {
+    const paid = contributions?.some?.(c => {
       const d = new Date(c.date);
-      return c.email===m.email && d.getMonth()+1===month && d.getFullYear()===year;
-    });
-    if(!paid){
+      return c.email === m.email && d.getMonth() + 1 === month && d.getFullYear() === year;
+    }) || false;
+
+    if (!paid) {
       missed++;
       const li = document.createElement('li');
       li.style.color = '#ff5722';
@@ -152,7 +168,7 @@ async function updateSummary(){
     }
   }
 
-  if(missed===0){
+  if (missed === 0) {
     const li = document.createElement('li');
     li.style.color = '#4caf50';
     li.style.fontWeight = 'bold';
@@ -160,227 +176,11 @@ async function updateSummary(){
     missedList.appendChild(li);
   }
 
-  if(missedEl) missedEl.innerText = missed;
-}
-
-// ================== MEMBER TREND CHART ==================
-async function drawMemberTrend(){
-  const emailEl = document.getElementById('memberSelect');
-  if(!emailEl) return;
-  const email = emailEl.value;
-  if(!email) return;
-
-  const contributions = await fetchSheet("Contributions");
-  const dataArr = Array(12).fill(0);
-  const year = new Date().getFullYear();
-
-  contributions.forEach(c=>{
-    const d = new Date(c.date);
-    if(c.email===email && d.getFullYear()===year) dataArr[d.getMonth()]+=Number(c.amount);
-  });
-
-  const ctx = document.getElementById('memberChart')?.getContext('2d');
-  if(!ctx) return;
-  if(memberChart) memberChart.destroy();
-
-  memberChart = new Chart(ctx,{
-    type:'line',
-    data:{
-      labels:["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"],
-      datasets:[{
-        label:`${email} Contribution`,
-        data:dataArr,
-        borderColor:'rgba(255,193,7,1)',
-        backgroundColor:'rgba(255,193,7,0.2)',
-        fill:true,
-        tension:0.3
-      }]
-    },
-    options:{
-      plugins:{title:{display:true,text:`Contribution Trend for ${email}`}},
-      animation:{duration:1200,easing:'easeOutQuart'}
-    }
-  });
-}
-
-// ================== GENERAL CHART ==================
-function drawChart(labels,data,title){
-  const ctx = document.getElementById('chart')?.getContext('2d');
-  if(!ctx) return;
-  if(chart) chart.destroy();
-  chart = new Chart(ctx,{
-    type:'bar',
-    data:{labels,datasets:[{label:"KES",data}]},
-    options:{plugins:{title:{display:true,text:title}}, animation:{duration:1000,easing:'easeOutQuart'}}
-  });
-}
-
-// ================== REPORTS ==================
-async function monthlyReport(){
-  const monthYear = document.getElementById('monthPicker')?.value.split('-');
-  if(!monthYear[0]) return;
-  const month = Number(monthYear[1]);
-  const year = Number(monthYear[0]);
-
-  const contributions = await fetchSheet("Contributions");
-  const total = contributions.filter(c=>{
-    const d = new Date(c.date);
-    return d.getMonth()+1===month && d.getFullYear()===year;
-  }).reduce((a,b)=>a+Number(b.amount),0);
-
-  const reportEl = document.getElementById('reportResult');
-  if(reportEl) reportEl.innerText = `Total: KES ${total}`;
-  drawChart(["Total"],[total],"Monthly");
-}
-
-async function yearlyReport(){
-  const year = Number(document.getElementById('yearPicker')?.value);
-  if(!year) return;
-
-  const contributions = await fetchSheet("Contributions");
-  const arr = Array(12).fill(0);
-  contributions.forEach(c=>{
-    const d = new Date(c.date);
-    if(d.getFullYear()===year) arr[d.getMonth()]+=Number(c.amount);
-  });
-
-  const total = arr.reduce((a,b)=>a+b,0);
-  const reportEl = document.getElementById('reportResult');
-  if(reportEl) reportEl.innerText = `Total: KES ${total}`;
-  drawChart(["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"],arr,"Yearly");
-}
-
-// ================== PDF EXPORT ==================
-function exportPDF(){
-  const pdf = new jspdf.jsPDF();
-  pdf.text(`Report: ${new Date().toLocaleDateString()}`,10,10);
-  const contrib = document.getElementById('cardTotalContributions')?.innerText;
-  const penalty = document.getElementById('cardTotalPenalties')?.innerText;
-  pdf.text(`Total Contributions: ${contrib}`,10,20);
-  pdf.text(`Total Penalties: ${penalty}`,10,30);
-
-  const chartEl = document.getElementById('chart');
-  if(chartEl) pdf.addImage(chartEl.toDataURL(),'PNG',10,40,180,80);
-  pdf.save('report.pdf');
-}
-
-// ================== LOANS ==================
-async function populateLoans() {
-  const loans = await fetchSheet("Loans");
-  const loansTable = document.getElementById("loansTable");
-  if(!loansTable) return;
-
-  loansTable.innerHTML = `
-    <tr>
-      <th>Member</th>
-      <th>Amount</th>
-      <th>Status</th>
-      <th>Reason</th>
-      ${currentUser.role === "admin" ? "<th>Actions</th>" : ""}
-    </tr>
-  `;
-
-  loans.forEach(loan => {
-    const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td>${loan.email}</td>
-      <td>${loan.amount}</td>
-      <td>${loan.status}</td>
-      <td>${loan.reason || ""}</td>
-      ${currentUser.role === "admin" ? `
-        <td>
-          ${loan.status === "pending" ? `<button onclick="updateLoan('${loan.id}','approved')">Approve</button>` : ""}
-          ${loan.status !== "repaid" ? `<button onclick="updateLoan('${loan.id}','repaid')">Mark Repaid</button>` : ""}
-        </td>
-      ` : ""}
-    `;
-    loansTable.appendChild(tr);
-  });
-}
-
-async function addLoan() {
-  const email = document.getElementById("loanEmail")?.value;
-  const amount = Number(document.getElementById("loanAmount")?.value);
-  const reason = document.getElementById("loanReason")?.value || "";
-
-  if(!email || !amount || amount <= 0) {
-    alert("Fill fields correctly");
-    return;
-  }
-
-  const id = "loan_" + Date.now();
-
-  const res = await addSheetItem("Loans", {id, email, amount, status: "pending", reason});
-  if(res.success) {
-    alert("Loan request added!");
-    populateLoans();
-  } else alert(res.message || "Failed to add loan");
-}
-
-async function updateLoan(id, status) {
-  const reason = prompt("Optional reason for status change:") || "";
-  const res = await fetch(API, {
-    method: "POST",
-    body: JSON.stringify({
-      sheet: "Loans",
-      action: "update",
-      id,
-      status,
-      reason
-    })
-  });
-  const data = await res.json();
-  if(data.success){
-    alert("Loan updated!");
-    populateLoans();
-  } else {
-    alert(data.message || "Failed to update loan");
-  }
-}
-
-// ================== BACKUP & RESTORE ==================
-async function backupData() {
-  const users = await fetchSheet("Users");
-  const contributions = await fetchSheet("Contributions");
-  const penalties = await fetchSheet("Penalties");
-  const loans = await fetchSheet("Loans");
-
-  const backup = {users, contributions, penalties, loans};
-  const blob = new Blob([JSON.stringify(backup, null, 2)], {type: "application/json"});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `chama_backup_${Date.now()}.json`;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-async function restoreData(file) {
-  const text = await file.text();
-  const data = JSON.parse(text);
-
-  for(const [sheetName, items] of Object.entries(data)) {
-    for(const item of items){
-      await addSheetItem(sheetName, item);
-    }
-  }
-  alert("Data restored successfully!");
-  updateSummary();
-  populateMembers();
-  drawMemberTrend();
-  populateLoans();
-}
-
-// ================== LOGOUT ==================
-function logout(){
-  localStorage.removeItem('currentUser');
-  window.location.href='index.html';
+  if (missedEl) missedEl.innerText = missed;
 }
 
 // ================== INIT ==================
-window.onload = function(){
+window.onload = function () {
   populateMembers();
   updateSummary();
-  drawMemberTrend();
-  populateLoans();
 };
