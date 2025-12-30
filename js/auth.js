@@ -1,4 +1,7 @@
+// ===== CONFIG =====
 const API = "https://script.google.com/macros/s/AKfycby65QtyNl1PV0k0R_dk3bg17S5kCa9tiWmyl7C2eOSJBU_a1Gzg2k7tbet2m8YTu9aKlw/exec";
+// CORS proxy (temporary for testing)
+const CORS_PROXY = "https://cors-anywhere.herokuapp.com/";
 
 // ===== REGISTER =====
 function register() {
@@ -11,10 +14,11 @@ function register() {
     return;
   }
 
-  fetch(API, {
+  fetch(CORS_PROXY + API, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
+      sheet: "Users",        // must include sheet
       action: "register",
       email,
       password,
@@ -44,10 +48,11 @@ function login() {
     return;
   }
 
-  fetch(API, {
+  fetch(CORS_PROXY + API, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
+      sheet: "Users",   // must include sheet
       action: "login",
       email,
       password
@@ -59,7 +64,8 @@ function login() {
         alert(data.message || "Invalid login credentials");
         return;
       }
-      localStorage.setItem("currentUser", JSON.stringify(data.user));
+      // Store in localStorage in expected format
+      localStorage.setItem("currentUser", JSON.stringify({ email, role: data.role }));
       window.location.href = "dashboard.html";
     })
     .catch(err => alert("Error: " + err.message));
