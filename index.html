@@ -27,46 +27,51 @@
 </div>
 
 <script>
-  const API = "/exec"; // same origin, no CORS
+const API = "/exec";
 
-  function register() {
-    const email = document.getElementById('regEmail').value.trim();
-    const password = document.getElementById('regPassword').value.trim();
-    const role = document.getElementById('role').value;
-    if(!email || !password){ alert("Email and password required"); return; }
+// ===== REGISTER =====
+function register() {
+  const email = document.getElementById('regEmail').value.trim();
+  const password = document.getElementById('regPassword').value.trim();
+  const role = document.getElementById('role').value;
 
-    fetch(API, {
-      method: "POST",
-      headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({ sheet:"Users", action:"register", email, password, role })
-    })
-    .then(res => res.json())
-    .then(data => {
-      if(data.success){
-        alert("Registered successfully! Please login.");
-        document.getElementById('regEmail').value="";
-        document.getElementById('regPassword').value="";
-      } else alert(data.message || "Registration failed");
-    }).catch(err => alert("Error: "+err.message));
-  }
+  if(!email || !password) { alert("Email and password required"); return; }
 
-  function login() {
-    const email = document.getElementById('loginEmail').value.trim();
-    const password = document.getElementById('loginPassword').value.trim();
-    if(!email || !password){ alert("Email and password required"); return; }
+  fetch(API, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sheet:"Users", action:"register", email, password, role })
+  })
+  .then(res => res.json())
+  .then(data => {
+    if(data.success){
+      alert("Registered successfully! Please login.");
+      document.getElementById('regEmail').value = "";
+      document.getElementById('regPassword').value = "";
+    } else alert(data.message || "Registration failed");
+  })
+  .catch(err => alert("Error: " + err.message));
+}
 
-    fetch(API, {
-      method: "POST",
-      headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({ sheet:"Users", action:"login", email, password })
-    })
-    .then(res => res.json())
-    .then(data => {
-      if(!data.success){ alert(data.message || "Invalid login"); return; }
-      localStorage.setItem("currentUser", JSON.stringify(data.user));
-      window.location.href="Dashboard.html";
-    }).catch(err => alert("Error: "+err.message));
-  }
+// ===== LOGIN =====
+function login() {
+  const email = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPassword').value.trim();
+  if(!email || !password){ alert("Email and password required"); return; }
+
+  fetch(API, {
+    method:"POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sheet:"Users", action:"login", email, password })
+  })
+  .then(res => res.json())
+  .then(data => {
+    if(!data.success){ alert(data.message || "Invalid login credentials"); return; }
+    localStorage.setItem("currentUser", JSON.stringify(data.user));
+    window.location.href = "Dashboard.html";
+  })
+  .catch(err => alert("Error: " + err.message));
+}
 </script>
 </body>
 </html>
