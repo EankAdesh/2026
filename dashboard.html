@@ -1,65 +1,118 @@
-const API = "YOUR_DEPLOYED_SCRIPT_URL";
-let chart, memberChart;
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chama Offline | Dashboard</title>
+<link rel="stylesheet" href="css/style.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+<div class="container">
+  <h2>Chama Offline Dashboard</h2>
 
-const currentUser = JSON.parse(localStorage.getItem('currentUser'));
-if(!currentUser){ alert("Please login first"); window.location.href="index.html"; }
-else{
-  const userRoleEl = document.getElementById('userRole');
-  if(userRoleEl) userRoleEl.innerText=`Welcome, ${currentUser.email} (${currentUser.role})`;
-  if(currentUser.role!=="admin"){ const adminSection=document.getElementById('adminSection'); if(adminSection) adminSection.style.display="none"; }
-}
+  <!-- Summary Cards -->
+  <div class="summary-cards">
+    <div class="summary-card contributions">
+      <i class="fas fa-hand-holding-usd"></i>
+      <h4>Total Contributions</h4>
+      <p id="cardTotalContributions">KES 0</p>
+    </div>
+    <div class="summary-card penalties">
+      <i class="fas fa-exclamation-triangle"></i>
+      <h4>Total Penalties</h4>
+      <p id="cardTotalPenalties">KES 0</p>
+    </div>
+    <div class="summary-card missed">
+      <i class="fas fa-user-clock"></i>
+      <h4>Members Missing</h4>
+      <p id="cardMissedMembers">0</p>
+    </div>
+  </div>
 
-async function fetchSheet(sheet){
-  try{
-    const res = await fetch(API,{ method:"POST", body: JSON.stringify({ sheet, action:"list" }) });
-    const data = await res.json();
-    return Array.isArray(data.items)?data.items:[];
-  } catch(err){ console.error(err); return []; }
-}
+  <div id="alerts" class="section">
+    <h3>Alerts</h3>
+    <ul id="missedList"></ul>
+  </div>
 
-async function addSheetItem(sheet,obj){
-  try{
-    const res = await fetch(API,{ method:"POST", body: JSON.stringify({ sheet, action:"add", ...obj }) });
-    const data = await res.json();
-    return data;
-  } catch(err){ console.error(err); return { success:false, message:"Network error" }; }
-}
+  <hr>
 
-// Populate members
-async function populateMembers(){
-  const users = await fetchSheet("Users");
-  const members = users.filter(u=>u?.role==="member");
-  const select=document.getElementById('memberSelect'), loanSelect=document.getElementById('loanEmail');
-  if(!select||!loanSelect) return;
-  select.innerHTML=loanSelect.innerHTML='<option value="">Select Member</option>';
-  members.forEach(m=>{
-    let opt1=document.createElement('option'); opt1.value=m.email; opt1.innerText=m.email; select.appendChild(opt1);
-    let opt2=document.createElement('option'); opt2.value=m.email; opt2.innerText=m.email; loanSelect.appendChild(opt2);
-  });
-}
+  <h3>Monthly Contribution Calendar</h3>
+  <label for="calendarMonth">Select Month:</label>
+  <input type="month" id="calendarMonth" onchange="drawCalendar()">
+  <table id="calendarTable"></table>
 
-// Update summary and avoid undefined
-async function updateSummary(){
-  const users = await fetchSheet("Users") || [];
-  const members = users.filter(u=>u?.role==="member");
-  const contributions = await fetchSheet("Contributions") || [];
-  const penalties = await fetchSheet("Penalties") || [];
-  const now = new Date(), month=now.getMonth()+1, year=now.getFullYear();
+  <p id="userRole"></p>
+  <button onclick="logout()">Logout</button>
 
-  const totalC = contributions.filter(c=>c?.date && new Date(c.date).getMonth()+1===month && new Date(c.date).getFullYear()===year).reduce((a,b)=>a+Number(b.amount||0),0);
-  const totalP = penalties.filter(p=>p?.month===month && p?.year===year).reduce((a,b)=>a+Number(b.amount||0),0);
+  <div id="adminSection" class="section">
+    <h3>Add Member Contribution</h3>
+    <input id="memberEmail" placeholder="Member Email">
+    <input id="amount" type="number" placeholder="Amount">
+    <button onclick="addContribution()">Add Contribution</button>
 
-  document.getElementById('cardTotalContributions') && (document.getElementById('cardTotalContributions').innerText=`KES ${totalC}`);
-  document.getElementById('cardTotalPenalties') && (document.getElementById('cardTotalPenalties').innerText=`KES ${totalP}`);
+    <h3>Run Penalty (Month End)</h3>
+    <button onclick="calculatePenalties()">Apply Penalties</button>
+  </div>
 
-  const missedList=document.getElementById('missedList'); if(!missedList) return; missedList.innerHTML=''; let missed=0;
-  members.forEach(m=>{
-    const paid=contributions.some(c=>c?.email===m.email && new Date(c.date).getMonth()+1===month && new Date(c.date).getFullYear()===year);
-    if(!paid){ missed++; let li=document.createElement('li'); li.style.color='#ff5722'; li.style.fontWeight='bold'; li.innerText=`${m.email} has not contributed this month!`; missedList.appendChild(li); }
-  });
-  if(missed===0){ let li=document.createElement('li'); li.style.color='#4caf50'; li.style.fontWeight='bold'; li.innerText='All members have contributed this month ✅'; missedList.appendChild(li); }
-  document.getElementById('cardMissedMembers') && (document.getElementById('cardMissedMembers').innerText=missed);
-}
+  <hr>
 
-// Init
-window.onload=function(){ populateMembers(); updateSummary(); };
+  <h3>Loan Management</h3>
+  <div id="loanSection">
+    <!-- Request Loan (Member Only) -->
+    <div id="requestLoan" class="section">
+      <h4>Request a Loan</h4>
+      <select id="loanEmail">
+        <option value="">Select Member</option>
+      </select>
+      <input id="loanAmount" type="number" placeholder="Amount">
+      <input id="loanReason" placeholder="Reason (optional)">
+      <button onclick="addLoan()">Request Loan</button>
+    </div>
+
+    <!-- Loan List (Admin Only) -->
+    <div id="loanListSection" class="section">
+      <h4>Loans</h4>
+      <table id="loansTable"></table>
+    </div>
+  </div>
+
+  <hr>
+
+  <h3>Reports</h3>
+  <input type="month" id="monthPicker">
+  <button onclick="monthlyReport()">Monthly Report</button>
+
+  <input type="number" id="yearPicker" placeholder="Year">
+  <button onclick="yearlyReport()">Yearly Report</button>
+
+  <p id="reportResult"></p>
+  <canvas id="chart"></canvas>
+  <button onclick="exportPDF()">Export PDF</button>
+  <hr>
+
+  <h3>Member Contribution Trends</h3>
+  <select id="memberSelect" onchange="drawMemberTrend()">
+    <option value="">Select Member</option>
+  </select>
+  <canvas id="memberChart"></canvas>
+  <hr>
+
+  <h3>Backup & Restore</h3>
+  <button onclick="backupData()">Backup Data</button>
+  <input type="file" onchange="restoreData(this.files[0])">
+</div>
+
+<script src="js/dashboard.js"></script>
+<script>
+  // Hide Request Loan section for admin
+  const currentUser = JSON.parse(localStorage.getItem('currentUser'));
+  if(currentUser && currentUser.role === "admin") {
+    const requestLoan = document.getElementById('requestLoan');
+    if(requestLoan) requestLoan.style.display = 'none';
+  }
+</script>
+</body>
+</html>
