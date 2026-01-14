@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Member Dashboard</title>
+
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+</head>
+<body class="bg-gray-100">
+
+<div class="flex min-h-screen">
+
+<!-- SIDEBAR -->
+<aside class="w-64 bg-green-700 text-white p-5">
+  <h2 class="text-xl font-bold mb-6">Chama Member</h2>
+  <nav class="space-y-3">
+    <button onclick="showTab('dashboard')" class="block w-full text-left">🏠 Dashboard</button>
+    <button onclick="showTab('contributions')" class="block w-full text-left">💰 Contributions</button>
+    <button onclick="showTab('loans')" class="block w-full text-left">📄 Loans</button>
+    <button onclick="showTab('penalties')" class="block w-full text-left">⚠️ Penalties</button>
+    <button onclick="showTab('messages')" class="block w-full text-left">📨 Messages</button>
+  </nav>
+</aside>
+
+<!-- MAIN -->
+<main class="flex-1 p-6">
+
+<!-- DASHBOARD -->
+<section id="dashboard" class="tab">
+  <h1 class="text-2xl font-bold mb-4">Dashboard</h1>
+
+  <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+    <div class="bg-white p-4 rounded shadow">
+      <h3>Total Contributions</h3>
+      <p class="text-2xl font-bold text-green-700" id="totalContrib">0</p>
+    </div>
+
+    <div class="bg-white p-4 rounded shadow">
+      <h3>Active Loan Balance</h3>
+      <p class="text-2xl font-bold text-red-600" id="loanBalance">0</p>
+    </div>
+
+    <div class="bg-white p-4 rounded shadow">
+      <h3>Unpaid Penalties</h3>
+      <p class="text-2xl font-bold text-orange-600" id="penaltyTotal">0</p>
+    </div>
+  </div>
+
+  <canvas id="memberChart"></canvas>
+</section>
+
+<!-- CONTRIBUTIONS -->
+<section id="contributions" class="tab hidden">
+  <h2 class="text-xl font-bold mb-3">My Contributions</h2>
+  <table class="w-full bg-white rounded shadow">
+    <thead class="bg-gray-200">
+      <tr>
+        <th class="p-2">Month</th>
+        <th class="p-2">Amount</th>
+        <th class="p-2">Date</th>
+      </tr>
+    </thead>
+    <tbody id="contribTable"></tbody>
+  </table>
+</section>
+
+<!-- LOANS -->
+<section id="loans" class="tab hidden">
+  <h2 class="text-xl font-bold mb-3">My Loans</h2>
+  <table class="w-full bg-white rounded shadow">
+    <thead class="bg-gray-200">
+      <tr>
+        <th class="p-2">Amount</th>
+        <th class="p-2">Balance</th>
+        <th class="p-2">Status</th>
+      </tr>
+    </thead>
+    <tbody id="loanTable"></tbody>
+  </table>
+</section>
+
+<!-- PENALTIES -->
+<section id="penalties" class="tab hidden">
+  <h2 class="text-xl font-bold mb-3">Penalties</h2>
+  <ul id="penaltyList" class="space-y-2"></ul>
+</section>
+
+<!-- MESSAGES -->
+<section id="messages" class="tab hidden">
+  <h2 class="text-xl font-bold mb-3">Messages</h2>
+  <ul id="messageList" class="space-y-2"></ul>
+</section>
+
+</main>
+</div>
+
+<script>
+const API_URL = "https://script.google.com/macros/s/AKfycbwGxR6GFIJRmcnC7x5BufaWkCFCJFagXxF_2NFeoaEjm_5ZMX4kJi3z5r8r-1M4uyNSdw/exec";
+const user = JSON.parse(localStorage.getItem("user"));
+
+function showTab(id) {
+  document.querySelectorAll(".tab").forEach(t => t.classList.add("hidden"));
+  document.getElementById(id).classList.remove("hidden");
+}
+
+async function post(action, payload = {}) {
+  payload.action = action;
+  payload.userId = user.id;
+  payload.role = user.role;
+
+  const res = await fetch(API_URL, {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+  return res.json();
+}
+
+/* ===== LOAD DASHBOARD ===== */
+async function loadDashboard() {
+  const data = await post("dashboard");
+
+  document.getElementById("totalContrib").innerText = data.totalContrib;
+  document.getElementById("loanBalance").innerText = data.loanBalance;
+  document.getElementById("penaltyTotal").innerText = data.penaltyTotal;
+
+  new Chart(document.getElementById("memberChart"), {
+    type: "bar",
+    data: {
+      labels: ["Contributions", "Loans", "Penalties"],
+      datasets: [{
+        data: [
+          data.totalContrib,
+          data.loanBalance,
+          data.penaltyTotal
+        ]
+      }]
+    }
+  });
+}
+
+/* ===== LOAD MESSAGES ===== */
+async function loadMessages() {
+  const msgs = await post("getMessages");
+  const ul = document.getElementById("messageList");
+  ul.innerHTML = "";
+
+  if (msgs.length === 0) {
+    ul.innerHTML = "<li class='bg-green-100 p-3 rounded'>No pending issues 🎉</li>";
+    return;
+  }
+
+  msgs.forEach(m => {
+    ul.innerHTML += `<li class="bg-red-100 p-3 rounded">${m}</li>`;
+  });
+}
+
+/* INIT */
+showTab("dashboard");
+loadDashboard();
+loadMessages();
+</script>
+
+</body>
+</html>
